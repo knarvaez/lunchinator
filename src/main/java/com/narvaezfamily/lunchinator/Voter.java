@@ -1,6 +1,7 @@
 package com.narvaezfamily.lunchinator;
 
 import io.vertx.core.json.JsonObject;
+import java.util.Objects;
 
 /**
  * <p>Title: Voter.java</p>
@@ -34,5 +35,19 @@ public class Voter {
 	 */
 	public String getEmail() {
 		return email;
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(name, email);
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (o == this) return true;
+		if (!(o instanceof Voter)) return false;
+		Voter voter = (Voter)o;
+		return Objects.equals(name, voter.name) &&
+			Objects.equals(email, voter.email);
 	}
 }
