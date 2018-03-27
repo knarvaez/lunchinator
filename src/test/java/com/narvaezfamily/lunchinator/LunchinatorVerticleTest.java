@@ -68,19 +68,13 @@ public class LunchinatorVerticleTest {
         client.post("/api/create-ballot")
 			.sendJsonObject(ballot, ar -> {
 				if(ar.succeeded()) {
+					JsonObject result = ar.result().bodyAsJsonObject();
+					String ballotId = result.getString("ballotId");
+					System.out.println(ballotId);
 					async.complete();
 				} else {
 					context.fail();
 				}
 			});
-//                .rxSend()
-//                .subscribe(stories -> {
-//                    System.out.println(new JsonObject(stories.bodyAsString()).encodePrettily());
-//                    async.complete();
-//                }, err -> {
-//                    err.printStackTrace();
-//                    context.fail();
-//                });
 	}
-
 }
