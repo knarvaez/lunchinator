@@ -30,9 +30,11 @@ public class FetchRestaurants {
             .setSsl(true);
 	private List<Restaurant> restaurants;
 	private Vertx vertx;
+	private int restaurantsReady = 0;
+	private int restaurantsFound = 0;
 
 	/**
-	 * 
+	 *
 	 * @param vertx
 	 */
 	public FetchRestaurants(Vertx pVertx) {
@@ -46,14 +48,19 @@ public class FetchRestaurants {
 			if(!result.failed()) {
 				restaurants = new LinkedList<>();
 				JsonArray data = result.result();
+				restaurantsFound = data.size();
+				vertx.eventBus().consumer("REVIEWS_LOADED", restaurant -> {
+					if(++restaurantsReady == restaurantsFound) {
+						vertx.eventBus().publish(RESTAURANTS_LOADED, null);
+					}
+				});
 				data.forEach(object ->{
 					if(object instanceof JsonObject) {
 						JsonObject jobj = (JsonObject)object;
-						Restaurant restaurant = new Restaurant(jobj, client);
+						Restaurant restaurant = new Restaurant(jobj, client, vertx);
 						restaurants.add(restaurant);
 					}
 				});
-				vertx.eventBus().publish(RESTAURANTS_LOADED, null);
 			}
 		});
 	}
@@ -68,7 +75,7 @@ public class FetchRestaurants {
 
 	/**
 	 * Picks a random list of <code>DEFAULT_LIMIT<code> restaurants with no duplicate items.
-	 * @return List of random order resataurants
+	 * @return List of random selected resataurants
 	 */
 	public List<Restaurant> pickRandom() {
 		List<Restaurant> copy = new LinkedList<>(restaurants);

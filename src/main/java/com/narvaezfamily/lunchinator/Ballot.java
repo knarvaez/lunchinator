@@ -3,8 +3,10 @@ package com.narvaezfamily.lunchinator;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.rxjava.core.Vertx;
+import io.vertx.rxjava.core.eventbus.MessageConsumer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -47,10 +49,13 @@ public class Ballot {
 			}
 		}
 
-		// register for restaurants loaded message
-		vertx.eventBus().consumer(FetchRestaurants.RESTAURANTS_LOADED, message -> {
-			choices = fetchRestaurants.pickRandom();
-		});
+		// register for restaurants loaded message. Only listen once; once handled unregister from bus.
+		final MessageConsumer<String> consumer = vertx.eventBus().consumer(FetchRestaurants.RESTAURANTS_LOADED);
+		consumer.handler(handler -> {
+				choices = fetchRestaurants.pickRandom();
+				choices.sort(Comparator.comparing((Restaurant r) ->r.getAverageRating()).reversed());
+				consumer.unregister();
+			});
 		fetchRestaurants = new FetchRestaurants(vertx);
 	}
 
@@ -82,6 +87,14 @@ public class Ballot {
 				for(Restaurant restaurant:choices) {
 					if(restaurant.getId() == restaurantId) {
 						voteOk = true;
+						Set<String> votes = voteMap.get(restaurantId);
+						if(votes != null) {
+							votes.add(voter.getEmail());
+						} else {
+							votes = new HashSet<>();
+							votes.add(voter.getEmail());
+							voteMap.put(restaurantId, votes);
+						}
 					}
 				}
 			}
@@ -89,5 +102,41 @@ public class Ballot {
 		} else {
 			return 409;
 		}
+	}
+
+	public JsonObject getBallotJson() {
+		JsonObject json = new JsonObject();
+		if(LocalDateTime.now().isBefore(endTime)) {
+			JsonObject suggestion = new JsonObject();
+			Restaurant restaurant = choices.get(0);
+			suggestion.put("id", restaurant.getId());
+			suggestion.put("name", restaurant.getName());
+			suggestion.put("averageReview", restaurant.getAverageRating());
+			Review topReview = restaurant.getTopReview();
+			suggestion.put("TopReviewer", topReview.getReviewer());
+			suggestion.put("Review", topReview.getReview());
+			json.put("suggestion", suggestion);
+			JsonArray choicesArray = new JsonArray();
+			for(Restaurant option:choices) {
+				JsonObject choice = new JsonObject();
+				choice.put("id", option.getId());
+				choice.put("name", option.getName());
+				choice.put("averageReview", option.getAverageRating());
+				choice.put("description", option.getDescription());
+				choicesArray.add(choice);
+			}
+			json.put("choices", choicesArray);
+		} else {
+			if(voteMap.size() == 0) {
+				json.put("No Winner", "No votes have been cast");
+			} else {
+				int winnerId = 0;
+				int voteCount = 0;
+				for(int id:voteMap.keySet()) {
+					voteCount = voteMap.get(id).size() > voteCount ? voteMap.get(id).size() : voteCount;
+				}
+			}
+		}
+		return json;
 	}
 }

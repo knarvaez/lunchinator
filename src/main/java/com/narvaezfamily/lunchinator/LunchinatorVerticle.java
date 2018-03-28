@@ -2,7 +2,6 @@ package com.narvaezfamily.lunchinator;
 
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
-import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.rxjava.core.AbstractVerticle;
 import io.vertx.rxjava.core.http.HttpServer;
@@ -62,11 +61,23 @@ public class LunchinatorVerticle extends AbstractVerticle {
 			context.response()
 				.setStatusCode(201)
 				.putHeader("content-type", "application/json;charset=utf-8")
-				.end(Json.encodePrettily(ballot));
+				.end(ballot.getBallotJson().encodePrettily());
 		}
 	}
 
 	private void handleCastVote(RoutingContext context) {
-		String ballotId = context.request().getParam("id");
+		String ballotId = context.request().getParam("ballotId");
+		if(ballotId == null || ballotMap.get(UUID.fromString(ballotId)) == null) {
+			context.response().setStatusCode(404).end();
+		} else {
+			Ballot ballot = ballotMap.get(UUID.fromString(ballotId));
+			int restaurantId = Integer.parseInt(context.request().getParam("id"));
+			String voterName = context.request().getParam("voterName");
+			String email = context.request().getParam("emailAddress");
+			JsonObject voterJson = new JsonObject().put("name", voterName).put("emailAddress", email);
+			Voter voter = new Voter(voterJson);
+			int code = ballot.castVote(restaurantId, voter);
+			context.response().setStatusCode(code).end();
+		}
 	}
 }

@@ -2,9 +2,8 @@ package com.narvaezfamily.lunchinator;
 
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.rxjava.core.Vertx;
 import io.vertx.rxjava.ext.web.client.WebClient;
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -18,6 +17,7 @@ import rx.Observable;
  */
 public class Restaurant {
 	private final WebClient webClient;
+	private final Vertx vertx;
 	private final int id;
 	private final String name;
 	private int waitTimeMinutes;
@@ -25,9 +25,12 @@ public class Restaurant {
 	private String image;
 	private String description;
 	private List<Review> reviews;
+	private int averageRating = 0;
+	private int highestRating = 0;
 
-	public Restaurant(JsonObject restaurantJson, WebClient client) {
+	public Restaurant(JsonObject restaurantJson, WebClient client, Vertx pVertx) {
 		webClient = client;
+		vertx = pVertx;
 		id = restaurantJson.getInteger("id");
 		name = restaurantJson.getString("name");
 		types = new LinkedList<>();
@@ -35,19 +38,28 @@ public class Restaurant {
 		if(cuisineTypes != null) {
 			types.addAll(cuisineTypes.getList());
 		}
-		Integer wtm = restaurantJson.getInteger("waitTimeMinutes");
-		waitTimeMinutes = wtm != null ? wtm : 0;
+		Object val = restaurantJson.getValue("waitTimeMinutes");
+		if(val != null && val instanceof Integer) {
+			waitTimeMinutes = (Integer)val;
+		} else if(val != null && val instanceof String) {
+			waitTimeMinutes = Integer.parseInt((String)val);
+		}
 		image = restaurantJson.getString("image");
 		description = restaurantJson.getString("description");
 		reviews = new ArrayList<>();
 		fetchReviews().subscribe(jsonArray -> {
+			int sum = 0;
 			for(Object obj:jsonArray) {
 				if(obj instanceof JsonObject) {
 					JsonObject jobj = (JsonObject)obj;
 					Review review = new Review(jobj);
 					reviews.add(review);
+					sum += review.getRating();
+					highestRating = review.getRating() > highestRating ? review.getRating() : highestRating;
 				}
 			}
+			averageRating = Math.round(sum / (float)reviews.size());
+			vertx.eventBus().publish("REVIEWS_LOADED", null);
 		});
 	}
 
@@ -92,22 +104,26 @@ public class Restaurant {
 	}
 
 	private Observable<JsonArray> fetchReviews() {
-		String encodedName  = null;
+		String encodedName  = name.replace(" ", "%20");
+		return webClient
+			.get(String.format("/api/reviews/%s", encodedName))
+			.rxSend()
+			.toObservable()
+			.map(response -> response.bodyAsJsonArray());
+	}
 
-		try	{
-			encodedName = URLEncoder.encode(name, "UTF-8");
-		} catch(UnsupportedEncodingException ex) {
-			ex.printStackTrace();
-		}
+	public int getAverageRating() {
+		return averageRating;
+	}
 
-		if(encodedName != null) {
-			return webClient
-				.get(String.format("/api/reviews/%s", encodedName))
-				.rxSend()
-				.toObservable()
-				.map(response -> response.bodyAsJsonArray());
-		} else {
-			return null;
+	public Review getTopReview() {
+		Review topReview = null;
+		for(Review review:reviews) {
+			topReview = review.getRating() == highestRating ? review : null;
+			if(topReview != null) {
+				break;
+			}
 		}
+		return topReview;
 	}
 }
